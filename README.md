@@ -10,6 +10,7 @@ A modular, theme‑matched search interface for Spoolman that adds:
 - Sidebar injection without modifying Spoolman source files
 
 This integration is fully container‑safe: all customizations live in the `data/search` directory and are mounted into the container at runtime.
+<img width="1564" height="492" alt="Screenshot 2025-12-26 140631" src="https://github.com/user-attachments/assets/a6438330-353a-418e-8d57-f4172d8157f3" />
 
 ---
 
