@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Spoolman Filament Search</title>
+
+    <script src="/search/config.js"></script>
+
+    <style>
+        :root {
+            color-scheme: dark;
+
+            --bg-main: var(--color-background);
+            --bg-surface: var(--color-surface);
+            --bg-surface-alt: var(--color-surface-alt);
+            --text-main: var(--color-text);
+            --text-muted: var(--color-text-muted);
+            --accent: var(--color-primary);
+            --accent-soft: color-mix(in srgb, var(--color-primary) 15%, transparent);
+            --border-subtle: var(--color-border);
+        }
+
+
+        body {
+            margin: 0;
+            font-family: var(--font-family, system-ui, sans-serif);
+            background: var(--bg-main);
+            color: var(--text-main);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 20px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .btn-link {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-surface-alt);
+            color: var(--text-main);
+            text-decoration: none;
+            font-size: 13px;
+            transition: background 0.15s;
+        }
+
+        .btn-link:hover {
+            background: var(--bg-surface);
+        }
+
+        .btn-link.accent {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+            color: var(--accent);
+        }
+
+        main {
+            padding: 20px;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        .search-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        #searchInput {
+            padding: 7px 9px;
+            border-radius: 4px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-surface);
+            color: var(--text-main);
+        }
+
+        .quick-filters {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        th,
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-subtle);
+            font-size: 13px;
+        }
+
+        th {
+            background: var(--bg-surface-alt);
+            text-align: left;
+            font-weight: 600;
+        }
+
+
+
+        .name-link {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        #searchInput {
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-surface);
+            color: var(--text-main);
+            font-size: 14px;
+        }
+
+        #searchInput:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+        }
+
+        .quick-filters button {
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-subtle);
+            background: var(--bg-surface-alt);
+            color: var(--text-main);
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .quick-filters button:hover {
+            background: var(--bg-surface);
+        }
+
+        .color-swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            border: 1px solid var(--border-subtle);
+            display: inline-block;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div>
+            <h2 style="margin:0;">Filament Search</h2>
+            <small>Custom Spoolman View</small>
+        </div>
+
+        <div>
+            <a href="/" class="btn-link">ΓåÉ Back</a>
+            <a href="#" id="amsLink" class="btn-link accent" target="_blank">AMS Tray Manager</a>
+        </div>
+    </header>
+
+    <main>
+
+        <form id="searchForm" class="search-row">
+            <input type="text" id="searchInput" placeholder="Search name, vendor, material, colorΓÇª">
+            <button type="submit">Search</button>
+        </form>
+
+        <div class="quick-filters">
+            <button type="button" data-q="PLA">PLA</button>
+            <button type="button" data-q="PETG">PETG</button>
+            <button type="button" data-q="ABS">ABS</button>
+            <button type="button" data-q="white">White</button>
+            <button type="button" data-q="black">Black</button>
+        </div>
+
+        <div id="status"></div>
+
+        <table id="resultsTable" style="display:none;">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th data-sort="name">Name</th>
+                    <th data-sort="vendor">Vendor</th>
+                    <th data-sort="material">Material</th>
+                    <th data-sort="color">Color</th>
+                    <th data-sort="remaining">Remaining</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+        </table>
+
+    </main>
+
+    <script>
+        const statusEl = document.getElementById("status");
+        const table = document.getElementById("resultsTable");
+        const tbody = document.getElementById("resultsBody");
+        const amsLink = document.getElementById("amsLink");
+
+        if (window.SPOOLMAN_CUSTOM_CONFIG?.amsUrl) {
+            amsLink.href = window.SPOOLMAN_CUSTOM_CONFIG.amsUrl;
+        } else {
+            amsLink.style.display = "none";
+        }
+
+        function setStatus(msg) {
+            statusEl.textContent = msg;
+        }
+
+        async function searchFilaments(q) {
+            const params = new URLSearchParams();
+            params.set("name", q);
+
+            const res = await fetch(`/api/v1/filament?${params}`);
+            if (!res.ok) return [];
+
+            return await res.json();
+        }
+
+        async function searchAll(q) {
+            const filamentParams = new URLSearchParams();
+            filamentParams.set("name", q);
+
+            const spoolParams = new URLSearchParams();
+            spoolParams.set("filament_name", q);
+
+            const [filamentsRes, spoolsRes] = await Promise.all([
+                fetch(`/api/v1/filament?${filamentParams}`),
+                fetch(`/api/v1/spool?${spoolParams}`)
+            ]);
+
+            const filaments = filamentsRes.ok ? await filamentsRes.json() : [];
+            const spools = spoolsRes.ok ? await spoolsRes.json() : [];
+
+            return { filaments, spools };
+        }
+
+
+
+        function render({ filaments, spools }) {
+            tbody.innerHTML = "";
+
+            const combined = [
+                ...filaments.map(f => ({
+                    type: "filament",
+                    icon: "≡ƒº╡",
+                    id: f.id,
+                    name: f.name,
+                    vendor: f.vendor?.name || "",
+                    material: f.material || "",
+                    colorHex: f.color_hex || "",
+                    colorName: f.name, // fallback: use filament name as label
+                    remaining: Math.round(f.remaining_weight_g ?? f.remaining_weight ?? 0),
+                    link: `/filament/show/${f.id}`
+                })),
+                ...spools.map(s => ({
+                    type: "spool",
+                    icon: "≡ƒîÇ",
+                    id: s.id,
+                    name: s.filament?.name || "",
+                    vendor: s.filament?.vendor?.name || "",   // FIXED
+                    material: s.filament?.material || "",
+                    colorHex: s.filament?.color_hex || "",
+                    colorName: s.filament?.name || "",
+                    remaining: Math.round(s.remaining_weight ?? "") + " g",
+                    link: `/spool/show/${s.id}`
+                }))
+
+            ];
+
+            if (!combined.length) {
+                table.style.display = "none";
+                return;
+            }
+
+            combined.forEach(item => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+    <td >
+        ${item.icon} ${item.type === "spool" ? `#${item.id}` : `#${item.id}`}
+    </td>
+    <td><a class="name-link" href="${item.link}">${item.name}</a></td>
+    <td>${item.vendor}</td>
+    <td>${item.material}</td>
+    <td>
+        ${item.colorHex
+                        ? `<span class="color-swatch" style="background:#${item.colorHex};"></span>`
+                        : ""
+                    }
+        ${item.colorName}
+    </td>
+    <td>${item.remaining}</td>
+`;
+
+                tbody.appendChild(tr);
+            });
+
+            table.style.display = "table";
+        }
+
+        function renderold(list) {
+            tbody.innerHTML = "";
+            if (!list.length) {
+                table.style.display = "none";
+                return;
+            }
+
+            list.forEach(f => {
+                const tr = document.createElement("tr");
+
+                tr.innerHTML = `
+            <td><a class="name-link" href="/filament/show/${f.id}">${f.name}</a></td>
+            <td>${(f.vendor && f.vendor.name) || ""}</td>
+            <td>${f.material || ""}</td>
+            <td>${f.color_name || f.color || ""}</td>
+            <td>${f.remaining_weight_g ?? f.remaining_weight ?? ""} g</td>
+        `;
+
+                tbody.appendChild(tr);
+            });
+
+            table.style.display = "table";
+        }
+
+        document.getElementById("searchForm").addEventListener("submit", async e => {
+            e.preventDefault();
+            const q = document.getElementById("searchInput").value.trim();
+            if (!q) return;
+
+            setStatus("SearchingΓÇª");
+            const { filaments, spools } = await searchAll(q);
+            render({ filaments, spools });
+            setStatus(`Found ${filaments.length} filaments and ${spools.length} spools.`);
+        });
+
+        document.querySelectorAll(".quick-filters button").forEach(btn => {
+            btn.addEventListener("click", () => {
+                document.getElementById("searchInput").value = btn.dataset.q;
+                document.getElementById("searchForm").dispatchEvent(new Event("submit"));
+            });
+        });
+    </script>
+
+</body>
+
+</html>
