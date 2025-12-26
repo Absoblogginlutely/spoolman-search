@@ -2,11 +2,11 @@
 
 # Spoolman Search Integration
 
-A modular, theme‑matched search interface for Spoolman that adds:
+A modular, theme‑matched search interface for [Spoolman](https://github.com/Donkie/Spoolman) that adds:
 - Unified search across **filaments** and **spools**
 - Color swatches matching Spoolman’s native UI
 - Remaining weight display (rounded to whole grams)
-- Optional Bambu Spoolman integration
+- Optional [Bambu Spoolman](https://github.com/mrkirby153/bambu-spoolman) link
 - Sidebar injection without modifying Spoolman source files
 
 This integration is fully container‑safe: all customizations live in the `data/search` directory and are mounted into the container at runtime.
