@@ -163,7 +163,7 @@
         </div>
 
         <div>
-            <a href="/" class="btn-link">ΓåÉ Back</a>
+            <a href="/" class="btn-link">← Back</a>
             <a href="#" id="amsLink" class="btn-link accent" target="_blank">AMS Tray Manager</a>
         </div>
     </header>
@@ -171,12 +171,17 @@
     <main>
 
         <form id="searchForm" class="search-row">
-            <input type="text" id="searchInput" placeholder="Search name, vendor, material, colorΓÇª">
+            <input type="text" id="searchInput" placeholder="Search name, vendor, material, color…">
             <button type="submit">Search</button>
         </form>
-
+<label>
+    <input type="checkbox" id="hasNotesToggle">
+    Has Notes Only
+</label>
+<button id="refreshCache">Refresh Cache</button>
         <div class="quick-filters">
             <button type="button" data-q="PLA">PLA</button>
+            <button type="button" data-q="PLA+">PLA+</button>
             <button type="button" data-q="PETG">PETG</button>
             <button type="button" data-q="ABS">ABS</button>
             <button type="button" data-q="white">White</button>
@@ -194,6 +199,7 @@
                     <th data-sort="material">Material</th>
                     <th data-sort="color">Color</th>
                     <th data-sort="remaining">Remaining</th>
+                    <th date-sort="Notes">Notes</th>
                 </tr>
             </thead>
             <tbody id="resultsBody"></tbody>
@@ -201,156 +207,175 @@
 
     </main>
 
-    <script>
-        const statusEl = document.getElementById("status");
-        const table = document.getElementById("resultsTable");
-        const tbody = document.getElementById("resultsBody");
-        const amsLink = document.getElementById("amsLink");
+<script>
+    const statusEl = document.getElementById("status");
+    const table = document.getElementById("resultsTable");
+    const tbody = document.getElementById("resultsBody");
+    const amsLink = document.getElementById("amsLink");
 
-        if (window.SPOOLMAN_CUSTOM_CONFIG?.amsUrl) {
-            amsLink.href = window.SPOOLMAN_CUSTOM_CONFIG.amsUrl;
-        } else {
-            amsLink.style.display = "none";
-        }
+    if (window.SPOOLMAN_CUSTOM_CONFIG?.amsUrl) {
+        amsLink.href = window.SPOOLMAN_CUSTOM_CONFIG.amsUrl;
+    } else {
+        amsLink.style.display = "none";
+    }
 
-        function setStatus(msg) {
-            statusEl.textContent = msg;
-        }
+    function setStatus(msg) {
+        statusEl.textContent = msg;
+    }
 
-        async function searchFilaments(q) {
-            const params = new URLSearchParams();
-            params.set("name", q);
+    // -----------------------------
+    // CACHE
+    // -----------------------------
+    let CACHE = {
+        filaments: [],
+        spools: [],
+        timestamp: 0
+    };
 
-            const res = await fetch(`/api/v1/filament?${params}`);
-            if (!res.ok) return [];
+    async function loadCache() {
+        setStatus("Loading cache…");
 
-            return await res.json();
-        }
+        const [filamentsRes, spoolsRes] = await Promise.all([
+            fetch(`/api/v1/filament`),
+            fetch(`/api/v1/spool`)
+        ]);
 
-        async function searchAll(q) {
-            const filamentParams = new URLSearchParams();
-            filamentParams.set("name", q);
+        CACHE.filaments = filamentsRes.ok ? await filamentsRes.json() : [];
+        CACHE.spools = spoolsRes.ok ? await spoolsRes.json() : [];
+        CACHE.timestamp = Date.now();
 
-            const spoolParams = new URLSearchParams();
-            spoolParams.set("filament_name", q);
+        setStatus("Cache loaded.");
+    }
 
-            const [filamentsRes, spoolsRes] = await Promise.all([
-                fetch(`/api/v1/filament?${filamentParams}`),
-                fetch(`/api/v1/spool?${spoolParams}`)
-            ]);
+    // -----------------------------
+    // RENDER
+    // -----------------------------
+    function render({ filaments, spools, q, hasNotes }) {
+        tbody.innerHTML = "";
 
-            const filaments = filamentsRes.ok ? await filamentsRes.json() : [];
-            const spools = spoolsRes.ok ? await spoolsRes.json() : [];
+        const combined = [
+            ...filaments.map(f => ({
+                type: "filament",
+                icon: "🧵",
+                id: f.id,
+                name: f.name,
+                vendor: f.vendor?.name || "",
+                material: f.material || "",
+                colorHex: f.color_hex || "",
+                colorName: f.name,
+                remaining: `${Math.round(f.remaining_weight ?? 0)} g`,
+                notes: f.comment || "",
+                link: `/filament/show/${f.id}`
+            })),
 
-            return { filaments, spools };
-        }
+            ...spools.map(s => ({
+                type: "spool",
+                icon: "🌀",
+                id: s.id,
+                name: s.filament?.name || "",
+                vendor: s.filament?.vendor?.name || "",
+                material: s.filament?.material || "",
+                colorHex: s.filament?.color_hex || "",
+                colorName: s.filament?.name || "",
+                remaining: `${Math.round(s.remaining_weight ?? 0)} g`,
+                notes: [
+                    s.comment || "",
+                    s.filament?.comment || ""
+                ].join(" ").trim(),
+                link: `/spool/show/${s.id}`
+            }))
+        ];
 
+        // -----------------------------
+        // FILTERING
+        // -----------------------------
+        const filtered = combined.filter(item => {
+            const matchesText =
+                item.name.toLowerCase().includes(q) ||
+                item.vendor.toLowerCase().includes(q) ||
+                item.material.toLowerCase().includes(q) ||
+                item.colorName.toLowerCase().includes(q) ||
+                item.notes.toLowerCase().includes(q);
 
+            const matchesNotes = !hasNotes || item.notes.trim().length > 0;
 
-        function render({ filaments, spools }) {
-            tbody.innerHTML = "";
-
-            const combined = [
-                ...filaments.map(f => ({
-                    type: "filament",
-                    icon: "≡ƒº╡",
-                    id: f.id,
-                    name: f.name,
-                    vendor: f.vendor?.name || "",
-                    material: f.material || "",
-                    colorHex: f.color_hex || "",
-                    colorName: f.name, // fallback: use filament name as label
-                    remaining: Math.round(f.remaining_weight_g ?? f.remaining_weight ?? 0),
-                    link: `/filament/show/${f.id}`
-                })),
-                ...spools.map(s => ({
-                    type: "spool",
-                    icon: "≡ƒîÇ",
-                    id: s.id,
-                    name: s.filament?.name || "",
-                    vendor: s.filament?.vendor?.name || "",   // FIXED
-                    material: s.filament?.material || "",
-                    colorHex: s.filament?.color_hex || "",
-                    colorName: s.filament?.name || "",
-                    remaining: Math.round(s.remaining_weight ?? "") + " g",
-                    link: `/spool/show/${s.id}`
-                }))
-
-            ];
-
-            if (!combined.length) {
-                table.style.display = "none";
-                return;
-            }
-
-            combined.forEach(item => {
-                const tr = document.createElement("tr");
-                tr.innerHTML = `
-    <td >
-        ${item.icon} ${item.type === "spool" ? `#${item.id}` : `#${item.id}`}
-    </td>
-    <td><a class="name-link" href="${item.link}">${item.name}</a></td>
-    <td>${item.vendor}</td>
-    <td>${item.material}</td>
-    <td>
-        ${item.colorHex
-                        ? `<span class="color-swatch" style="background:#${item.colorHex};"></span>`
-                        : ""
-                    }
-        ${item.colorName}
-    </td>
-    <td>${item.remaining}</td>
-`;
-
-                tbody.appendChild(tr);
-            });
-
-            table.style.display = "table";
-        }
-
-        function renderold(list) {
-            tbody.innerHTML = "";
-            if (!list.length) {
-                table.style.display = "none";
-                return;
-            }
-
-            list.forEach(f => {
-                const tr = document.createElement("tr");
-
-                tr.innerHTML = `
-            <td><a class="name-link" href="/filament/show/${f.id}">${f.name}</a></td>
-            <td>${(f.vendor && f.vendor.name) || ""}</td>
-            <td>${f.material || ""}</td>
-            <td>${f.color_name || f.color || ""}</td>
-            <td>${f.remaining_weight_g ?? f.remaining_weight ?? ""} g</td>
-        `;
-
-                tbody.appendChild(tr);
-            });
-
-            table.style.display = "table";
-        }
-
-        document.getElementById("searchForm").addEventListener("submit", async e => {
-            e.preventDefault();
-            const q = document.getElementById("searchInput").value.trim();
-            if (!q) return;
-
-            setStatus("SearchingΓÇª");
-            const { filaments, spools } = await searchAll(q);
-            render({ filaments, spools });
-            setStatus(`Found ${filaments.length} filaments and ${spools.length} spools.`);
+            return matchesText && matchesNotes;
         });
 
-        document.querySelectorAll(".quick-filters button").forEach(btn => {
-            btn.addEventListener("click", () => {
-                document.getElementById("searchInput").value = btn.dataset.q;
-                document.getElementById("searchForm").dispatchEvent(new Event("submit"));
-            });
-        });
-    </script>
+        const filteredFilaments = filtered.filter(i => i.type === "filament");
+        const filteredSpools = filtered.filter(i => i.type === "spool");
 
+        if (!filtered.length) {
+            table.style.display = "none";
+            return { filamentCount: 0, spoolCount: 0 };
+        }
+
+        filtered.forEach(item => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${item.icon} #${item.id}</td>
+                <td><a class="name-link" href="${item.link}">${item.name}</a></td>
+                <td>${item.vendor}</td>
+                <td>${item.material}</td>
+                <td>
+                    ${item.colorHex ? `<span class="color-swatch" style="background:#${item.colorHex};"></span>` : ""}
+                    ${item.colorName}
+                </td>
+                <td>${item.remaining}</td>
+                <td>${item.notes}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        table.style.display = "table";
+
+        return {
+            filamentCount: filteredFilaments.length,
+            spoolCount: filteredSpools.length
+        };
+    }
+
+    // -----------------------------
+    // SEARCH HANDLER
+    // -----------------------------
+    document.getElementById("searchForm").addEventListener("submit", async e => {
+        e.preventDefault();
+
+        const q = document.getElementById("searchInput").value.trim().toLowerCase();
+        const hasNotes = document.getElementById("hasNotesToggle").checked;
+
+        if (!CACHE.timestamp) {
+            await loadCache();
+        }
+
+        const { filamentCount, spoolCount } = render({
+            filaments: CACHE.filaments,
+            spools: CACHE.spools,
+            q,
+            hasNotes
+        });
+
+        setStatus(`Found ${filamentCount} filaments and ${spoolCount} spools.`);
+    });
+
+    // -----------------------------
+    // QUICK FILTERS
+    // -----------------------------
+    document.querySelectorAll(".quick-filters button").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.getElementById("searchInput").value = btn.dataset.q;
+            document.getElementById("searchForm").dispatchEvent(new Event("submit"));
+        });
+    });
+
+    // -----------------------------
+    // REFRESH CACHE BUTTON
+    // -----------------------------
+    document.getElementById("refreshCache").addEventListener("click", async () => {
+        await loadCache();
+        setStatus("Cache refreshed.");
+    });
+</script>
 </body>
 
 </html>
